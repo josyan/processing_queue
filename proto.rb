@@ -31,10 +31,31 @@ class WorkQueue
   end
 end
 
-identify_file_queue = WorkQueue.new(1) do |i|
+class ResultQueue
+  def initialize
+    @queue = []
+    @mutex = Mutex.new
+  end
+
+  def <<(*args)
+    @mutex.synchronize do
+      args.each do |a|
+        @queue << a
+      end
+    end
+  end
+
+  def result
+    @queue
+  end
+end
+
+result_queue = ResultQueue.new
+identify_file_queue = WorkQueue.new(10) do |i|
   puts "START #{i}"
+  result_queue << i
   sleep(rand)
-  if rand < 0.33
+  if rand < 0.5
     identify_file_queue << i + 100
   end
   puts "STOP  #{i}"
@@ -47,3 +68,5 @@ puts "ALL JOBS ADDED"
 
 identify_file_queue.join
 puts "ALL JOBS DONE"
+
+puts result_queue.result.sort.join(',')
