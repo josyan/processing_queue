@@ -15,23 +15,18 @@ end
 puts "Called with #{original_path}"
 
 class WorkQueue
-  def initialize(count = 4)
+  def initialize(count = 4, &block)
     @threads = []
     @pool = Thread.pool(count)
+    @block = block
   end
 
-  def <<(file_path)
+  def <<(*args)
     @threads << Thread.new do
       @pool.process do
-        call(file_path)
+        @block.call(*args)
       end
     end
-  end
-
-  def call(file_path)
-    puts "START #{file_path}"
-    sleep(rand)
-    puts "STOP  #{file_path}"
   end
 
   def join
@@ -40,8 +35,12 @@ class WorkQueue
   end
 end
 
-puts ""
-identify_file_queue = WorkQueue.new
+identify_file_queue = WorkQueue.new do |i|
+  puts "START #{i}"
+  sleep(rand)
+  puts "STOP  #{i}"
+end
+
 100.times do |i|
   identify_file_queue << i
 end
