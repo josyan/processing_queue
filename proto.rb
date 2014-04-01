@@ -31,9 +31,12 @@ class WorkQueue
   end
 end
 
-identify_file_queue = WorkQueue.new(4) do |i|
+identify_file_queue = WorkQueue.new(1) do |i|
   puts "START #{i}"
   sleep(rand)
+  if rand < 0.33
+    identify_file_queue << i + 100
+  end
   puts "STOP  #{i}"
 end
 
