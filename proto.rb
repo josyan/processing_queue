@@ -32,13 +32,11 @@ class WorkQueue
 end
 
 class Synchronizer
+  attr_reader :object
+
   def initialize(object)
     @object = object
     @mutex = Mutex.new
-  end
-
-  def object
-    @object
   end
 
   def method_missing(method, *args, &block)
