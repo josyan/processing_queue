@@ -97,4 +97,9 @@ identify_file_queue.join
 puts "Done in #{Time.now - start_at} seconds"
 
 puts
-puts result.object.keys.inspect
+result.each do |ext, files|
+  puts ext
+  files.each do |file|
+    puts "  #{file}"
+  end
+end
