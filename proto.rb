@@ -37,6 +37,10 @@ class Synchronizer
     @mutex = Mutex.new
   end
 
+  def object
+    @object
+  end
+
   def method_missing(method, *args, &block)
     @mutex.synchronize do
       @object.send(method, *args, &block)
@@ -44,23 +48,55 @@ class Synchronizer
   end
 end
 
-results = Synchronizer.new([])
-identify_file_queue = WorkQueue.new(10) do |i|
-  puts "START #{i}"
-  results << i
-  sleep(rand)
-  if rand < 0.5
-    identify_file_queue << i + 100
+class Job
+  def initialize(input, queue, result)
+    @input = input
+    @queue = queue
+    @result = result
   end
-  puts "STOP  #{i}"
+
+  def execute
+    log(@input)
+  end
+
+  def log(message)
+    puts "#{self.class.name.upcase[0..-4]} #{message}"
+  end
 end
 
-100.times do |i|
-  identify_file_queue << i
+class ListDirectoryJob < Job
+  def execute
+    super
+    Dir[File.join(@input, '*')].each do |file_or_directory_name|
+      @queue << IdentifyPathJob.new(file_or_directory_name, @queue, @result)
+    end
+  end
 end
-puts "ALL JOBS ADDED"
+
+class IdentifyPathJob < Job
+  def execute
+    super
+    if File.directory?(@input)
+      @queue << ListDirectoryJob.new(@input, @queue, @result)
+    elsif File.file?(@input)
+      ext = File.extname(@input)[1..-1].downcase.to_sym
+      @result[ext] ||= []
+      @result[ext] << @input
+    end
+  end
+end
+
+result = Synchronizer.new({})
+identify_file_queue = WorkQueue.new(8) do |job|
+  job.execute
+end
+
+puts
+start_at = Time.now
+identify_file_queue << IdentifyPathJob.new(original_path, identify_file_queue, result)
 
 identify_file_queue.join
-puts "ALL JOBS DONE"
+puts "Done in #{Time.now - start_at} seconds"
 
-puts results.sort.join(',')
+puts
+puts result.object.keys.inspect
