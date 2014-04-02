@@ -66,7 +66,6 @@ end
 
 class ListDirectoryJob < Job
   def execute
-    super
     Dir[File.join(@input, '*')].each do |file_or_directory_name|
       @queue << IdentifyPathJob.new(file_or_directory_name, @queue, @result)
     end
@@ -75,7 +74,6 @@ end
 
 class IdentifyPathJob < Job
   def execute
-    super
     if File.directory?(@input)
       @queue << ListDirectoryJob.new(@input, @queue, @result)
     elsif File.file?(@input)
