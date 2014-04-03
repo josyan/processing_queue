@@ -15,6 +15,21 @@ end
 
 puts "Called with #{original_path}"
 
+class Synchronizer
+  attr_reader :object
+
+  def initialize(object)
+    @object = object
+    @mutex = Mutex.new
+  end
+
+  def method_missing(method, *args, &block)
+    @mutex.synchronize do
+      @object.send(method, *args, &block)
+    end
+  end
+end
+
 class DifferedWorkQueue
   def initialize(count = 4, &block)
     @count = count
@@ -36,42 +51,28 @@ class DifferedWorkQueue
 end
 
 class WorkQueue
-  def initialize(count = 4, &block)
-    @pool = Thread.pool(count)
-    @block = block
+  def initialize(initial_output, count = 4)
+    @count = count
+    @output = Synchronizer.new(initial_output)
   end
 
-  def <<(*args)
-    @pool.process do
-      @block.call(*args)
+  def enqueue(input, &block)
+    (@pool ||= Thread.pool(@count)).process do
+      block.call(input, self, @output)
     end
   end
 
   def join
-    @pool.wait_done
-  end
-end
-
-class Synchronizer
-  attr_reader :object
-
-  def initialize(object)
-    @object = object
-    @mutex = Mutex.new
-  end
-
-  def method_missing(method, *args, &block)
-    @mutex.synchronize do
-      @object.send(method, *args, &block)
-    end
+    @pool.wait_done if @pool
+    @output.object
   end
 end
 
 class Job
-  def initialize(input, queue, result)
+  def initialize(input, queue, output)
     @input = input
     @queue = queue
-    @result = result
+    @output = output
   end
 
   def execute
@@ -86,7 +87,9 @@ end
 class ListDirectoryJob < Job
   def execute
     Dir[File.join(@input, '*')].each do |file_or_directory_name|
-      @queue << IdentifyPathJob.new(file_or_directory_name, @queue, @result)
+      @queue.enqueue(file_or_directory_name) do
+        IdentifyPathJob.new(file_or_directory_name, @queue, @output).execute
+      end
     end
   end
 end
@@ -94,34 +97,27 @@ end
 class IdentifyPathJob < Job
   def execute
     if File.directory?(@input)
-      @queue << ListDirectoryJob.new(@input, @queue, @result)
+      @queue.enqueue(@input) do
+        ListDirectoryJob.new(@input, @queue, @output).execute
+      end
     elsif File.file?(@input)
       ext = File.extname(@input)[1..-1].downcase.to_sym
-      @result[ext] ||= []
-      @result[ext] << @input
+      @output[ext] ||= []
+      @output[ext] << @input
     end
   end
 end
 
-result = Synchronizer.new({})
-main_queue = WorkQueue.new(8) do |job|
-  job.execute
-end
-# differed_queue = DifferedWorkQueue.new(8) do |job|
-#   job.execute
-# end
+main_queue = WorkQueue.new({})
 
 puts
 puts "Executing main queue"
 start_at = Time.now
-main_queue << IdentifyPathJob.new(original_path, main_queue, result)
-main_queue.join
+main_queue.enqueue(original_path) do |input, queue, output|
+  IdentifyPathJob.new(input, queue, output).execute
+end
+result = main_queue.join
 puts "Done in #{Time.now - start_at} seconds"
-
-# puts "Executing differed_queue queue"
-# start_at = Time.now
-# differed_queue.join
-# puts "Done in #{Time.now - start_at} seconds"
 
 puts
 result.each do |ext, files|
