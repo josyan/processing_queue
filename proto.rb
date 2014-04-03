@@ -51,14 +51,19 @@ class DifferedWorkQueue
 end
 
 class WorkQueue
-  def initialize(initial_output, count = 4)
+  def initialize(initial_output, count = 4, &block)
     @count = count
     @output = Synchronizer.new(initial_output)
+    @block = block
   end
 
   def enqueue(input, &block)
     (@pool ||= Thread.pool(@count)).process do
-      block.call(input, self, @output)
+      if block_given?
+        block.call(input, self, @output)
+      else
+        @block.call(input, self, @output)
+      end
     end
   end
 
@@ -68,38 +73,44 @@ class WorkQueue
   end
 end
 
-class ListDirectoryJob
-  def self.execute(input, queue, output)
-    Dir[File.join(input, '*')].each do |file_or_directory_name|
-      queue.enqueue(file_or_directory_name) do |input, queue, output|
-        IdentifyPathJob.execute(input, queue, output)
-      end
+class Job
+  def initialize(input)
+    @input = input
+  end
+
+  def execute(queue, output)
+    # do nothing by default
+  end
+end
+
+class ListDirectoryJob < Job
+  def execute(queue, output)
+    Dir[File.join(@input, '*')].each do |file_or_directory_name|
+      queue.enqueue(IdentifyPathJob.new(file_or_directory_name))
     end
   end
 end
 
-class IdentifyPathJob
-  def self.execute(input, queue, output)
-    if File.directory?(input)
-      queue.enqueue(input) do |input, queue, output|
-        ListDirectoryJob.execute(input, queue, output)
-      end
-    elsif File.file?(input)
-      ext = File.extname(input)[1..-1].downcase.to_sym
+class IdentifyPathJob < Job
+  def execute(queue, output)
+    if File.directory?(@input)
+      queue.enqueue(ListDirectoryJob.new(@input))
+    elsif File.file?(@input)
+      ext = File.extname(@input)[1..-1].downcase.to_sym
       output[ext] ||= []
-      output[ext] << input
+      output[ext] << @input
     end
   end
 end
 
-main_queue = WorkQueue.new({})
+main_queue = WorkQueue.new({}) do |input, queue, output|
+  input.execute(queue, output)
+end
 
 puts
 puts "Executing main queue"
 start_at = Time.now
-main_queue.enqueue(original_path) do |input, queue, output|
-  IdentifyPathJob.execute(input, queue, output)
-end
+main_queue.enqueue(IdentifyPathJob.new(original_path))
 result = main_queue.join
 puts "Done in #{Time.now - start_at} seconds"
 
