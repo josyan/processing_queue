@@ -68,42 +68,26 @@ class WorkQueue
   end
 end
 
-class Job
-  def initialize(input, queue, output)
-    @input = input
-    @queue = queue
-    @output = output
-  end
-
-  def execute
-    log(@input)
-  end
-
-  def log(message)
-    puts "#{self.class.name.upcase[0..-4]} #{message}"
-  end
-end
-
-class ListDirectoryJob < Job
-  def execute
-    Dir[File.join(@input, '*')].each do |file_or_directory_name|
-      @queue.enqueue(file_or_directory_name) do
-        IdentifyPathJob.new(file_or_directory_name, @queue, @output).execute
+class ListDirectoryJob
+  def self.execute(input, queue, output)
+    Dir[File.join(input, '*')].each do |file_or_directory_name|
+      queue.enqueue(file_or_directory_name) do |input, queue, output|
+        IdentifyPathJob.execute(input, queue, output)
       end
     end
   end
 end
 
-class IdentifyPathJob < Job
-  def execute
-    if File.directory?(@input)
-      @queue.enqueue(@input) do
-        ListDirectoryJob.new(@input, @queue, @output).execute
+class IdentifyPathJob
+  def self.execute(input, queue, output)
+    if File.directory?(input)
+      queue.enqueue(input) do |input, queue, output|
+        ListDirectoryJob.execute(input, queue, output)
       end
-    elsif File.file?(@input)
-      ext = File.extname(@input)[1..-1].downcase.to_sym
-      @output[ext] ||= []
-      @output[ext] << @input
+    elsif File.file?(input)
+      ext = File.extname(input)[1..-1].downcase.to_sym
+      output[ext] ||= []
+      output[ext] << input
     end
   end
 end
@@ -114,7 +98,7 @@ puts
 puts "Executing main queue"
 start_at = Time.now
 main_queue.enqueue(original_path) do |input, queue, output|
-  IdentifyPathJob.new(input, queue, output).execute
+  IdentifyPathJob.execute(input, queue, output)
 end
 result = main_queue.join
 puts "Done in #{Time.now - start_at} seconds"
