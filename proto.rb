@@ -107,21 +107,21 @@ result = Synchronizer.new({})
 main_queue = WorkQueue.new(8) do |job|
   job.execute
 end
-differed_queue = DifferedWorkQueue.new(8) do |job|
-  job.execute
-end
+# differed_queue = DifferedWorkQueue.new(8) do |job|
+#   job.execute
+# end
 
 puts
 puts "Executing main queue"
 start_at = Time.now
-main_queue << IdentifyPathJob.new(original_path, differed_queue, result)
+main_queue << IdentifyPathJob.new(original_path, main_queue, result)
 main_queue.join
 puts "Done in #{Time.now - start_at} seconds"
 
-puts "Executing differed_queue queue"
-start_at = Time.now
-differed_queue.join
-puts "Done in #{Time.now - start_at} seconds"
+# puts "Executing differed_queue queue"
+# start_at = Time.now
+# differed_queue.join
+# puts "Done in #{Time.now - start_at} seconds"
 
 puts
 result.each do |ext, files|
