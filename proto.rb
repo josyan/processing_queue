@@ -30,21 +30,22 @@ class Synchronizer
   end
 end
 
-class DifferedWorkQueue
-  def initialize(count = 4, &block)
+class DeferredWorkQueue
+  def initialize(initial_output, count = 4, &block)
     @count = count
+    @output = initial_output
     @block = block
-    @jobs = []
+    @jobs = Synchronizer.new([])
   end
 
-  def <<(*args)
-    @jobs << args
+  def enqueue(input, &block)
+    @jobs << [input, block]
   end
 
   def join
-    @queue = WorkQueue.new(@count, &@block)
+    @queue = WorkQueue.new(@output, @count, &@block)
     @jobs.each do |job|
-      @queue << job
+      @queue.enqueue(job[0], &job[1])
     end
     @queue.join
   end
