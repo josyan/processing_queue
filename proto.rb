@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'thread/pool'
+require 'pp'
 
 if ARGV.length == 0
   puts "Usage: proto.rb <file_or_directory_name>"
@@ -13,6 +14,26 @@ if original_path !~ /^\//
 end
 
 puts "Called with #{original_path}"
+
+class DifferedWorkQueue
+  def initialize(count = 4, &block)
+    @count = count
+    @block = block
+    @jobs = []
+  end
+
+  def <<(*args)
+    @jobs << args
+  end
+
+  def join
+    @queue = WorkQueue.new(@count, &@block)
+    @jobs.each do |job|
+      @queue << job
+    end
+    @queue.join
+  end
+end
 
 class WorkQueue
   def initialize(count = 4, &block)
@@ -83,15 +104,23 @@ class IdentifyPathJob < Job
 end
 
 result = Synchronizer.new({})
-identify_file_queue = WorkQueue.new(8) do |job|
+main_queue = WorkQueue.new(8) do |job|
+  job.execute
+end
+differed_queue = DifferedWorkQueue.new(8) do |job|
   job.execute
 end
 
 puts
+puts "Executing main queue"
 start_at = Time.now
-identify_file_queue << IdentifyPathJob.new(original_path, identify_file_queue, result)
+main_queue << IdentifyPathJob.new(original_path, differed_queue, result)
+main_queue.join
+puts "Done in #{Time.now - start_at} seconds"
 
-identify_file_queue.join
+puts "Executing differed_queue queue"
+start_at = Time.now
+differed_queue.join
 puts "Done in #{Time.now - start_at} seconds"
 
 puts
